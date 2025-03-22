@@ -1,9 +1,25 @@
 const express = require("express");
+const mongoose = require("mongoose");
 const app = express();
 require('dotenv').config();
 
 // Middleware to parse JSON
 app.use(express.json());
+mongoose
+  .connect(process.env.MONGODB_URI, {
+    dbName:"webhook",
+  })
+  .then(() => console.log("✅ MongoDB Connected"))
+  .catch((err) => console.error(" MongoDB Connection Error:", err));
+// messageSchema
+  const messageSchema = new mongoose.Schema({
+    from: String,
+    to: String,
+    message: String,
+    timestamp: Date,
+  });
+  
+  const Message = mongoose.model("Message", messageSchema);
 
 // Webhook Verification (GET)
 app.get("/webhook", (req, res) => {
@@ -20,8 +36,28 @@ app.get("/webhook", (req, res) => {
 });
 
 // Handle Incoming Messages (POST)
-app.post("/webhook", (req, res) => {
+app.post("/webhook", async (req, res) => {
     console.log("Received Webhook Data:", JSON.stringify(req.body, null, 2));
+    try {
+        const entry = req.body.entry?.[0];
+        const change = entry?.changes?.[0];
+    
+        if (change?.value?.messages) {
+          const messageData = change.value.messages[0];
+          const newMessage = new Message({
+            from: messageData.from,
+            to: change.value.metadata.phone_number_id,
+            message: messageData.text?.body || "No text",
+            timestamp: new Date(),
+          });
+    
+          await newMessage.save();
+          console.log(" Message Saved to MongoDB:", newMessage);
+        }
+      } catch (error) {
+        console.error(" Error Saving Message:", error);
+      }
+    
     res.sendStatus(200); // Acknowledge WhatsApp's request
 });
 
